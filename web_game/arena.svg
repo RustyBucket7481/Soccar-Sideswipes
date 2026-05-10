@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560.05131" height="334.89552" viewBox="0,0,560.05131,334.89552">
+<g>
+
+<!-- FULL BACKGROUND -->
+<rect x="0" y="0" width="560.05" height="334.9" fill="#07070f"/>
+
+<!-- =============================== -->
+<!-- LEFT GOAL INTERIOR (x=0 to 60) -->
+<!-- Same dark panel aesthetic as back wall -->
+<!-- =============================== -->
+<rect x="0" y="0" width="60" height="334.9" fill="#0a0a1a"/>
+<rect x="0" y="7"   width="60" height="44" fill="#0c0c1e"/>
+<rect x="0" y="62"  width="60" height="44" fill="#090918"/>
+<rect x="0" y="117" width="60" height="44" fill="#0c0c1e"/>
+<rect x="0" y="172" width="60" height="44" fill="#090918"/>
+<rect x="0" y="217" width="60" height="44" fill="#0c0c1e"/>
+<rect x="0" y="272" width="60" height="44" fill="#090918"/>
+<!-- Subtle net grid (very faint) -->
+<line x1="0" y1="51"  x2="60" y2="51"  stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="0" y1="106" x2="60" y2="106" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="0" y1="161" x2="60" y2="161" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="0" y1="206" x2="60" y2="206" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="0" y1="261" x2="60" y2="261" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="20" y1="0" x2="20" y2="334.9" stroke="#111124" stroke-width="1" opacity="0.6"/>
+<line x1="40" y1="0" x2="40" y2="334.9" stroke="#111124" stroke-width="1" opacity="0.6"/>
+<!-- Faint blue glow on right edge of left goal (inner goal post) -->
+<rect x="57" y="7" width="3" height="320" fill="#1133aa" opacity="0.5"/>
+<rect x="56" y="7" width="2" height="320" fill="#2244cc" opacity="0.25"/>
+
+<!-- =============================== -->
+<!-- RIGHT GOAL INTERIOR (x=500 to 560) -->
+<!-- =============================== -->
+<rect x="500" y="0" width="60.05" height="334.9" fill="#0a0a1a"/>
+<rect x="500" y="7"   width="60" height="44" fill="#0c0c1e"/>
+<rect x="500" y="62"  width="60" height="44" fill="#090918"/>
+<rect x="500" y="117" width="60" height="44" fill="#0c0c1e"/>
+<rect x="500" y="172" width="60" height="44" fill="#090918"/>
+<rect x="500" y="217" width="60" height="44" fill="#0c0c1e"/>
+<rect x="500" y="272" width="60" height="44" fill="#090918"/>
+<line x1="500" y1="51"  x2="560" y2="51"  stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="500" y1="106" x2="560" y2="106" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="500" y1="161" x2="560" y2="161" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="500" y1="206" x2="560" y2="206" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="500" y1="261" x2="560" y2="261" stroke="#141428" stroke-width="1" opacity="0.8"/>
+<line x1="520" y1="0" x2="520" y2="334.9" stroke="#111124" stroke-width="1" opacity="0.6"/>
+<line x1="540" y1="0" x2="540" y2="334.9" stroke="#111124" stroke-width="1" opacity="0.6"/>
+<!-- Faint orange glow on left edge of right goal -->
+<rect x="500" y="7" width="3" height="320" fill="#aa3300" opacity="0.5"/>
+<rect x="501" y="7" width="2" height="320" fill="#cc4400" opacity="0.25"/>
+
+<!-- =============================== -->
+<!-- ARENA BACK WALL PANELS (x=60 to 500) -->
+<!-- =============================== -->
+<rect x="60" y="7" width="440" height="311" fill="#0f0f20"/>
+<rect x="60" y="7"   width="440" height="44" fill="#111126"/>
+<rect x="60" y="62"  width="440" height="44" fill="#0d0d20"/>
+<rect x="60" y="117" width="440" height="44" fill="#111126"/>
+<rect x="60" y="172" width="440" height="44" fill="#0d0d20"/>
+<rect x="60" y="217" width="440" height="44" fill="#111126"/>
+<rect x="60" y="272" width="440" height="44" fill="#0d0d20"/>
+<!-- Horizontal seams -->
+<rect x="60" y="51"  width="440" height="2" fill="#1e1e38" opacity="0.8"/>
+<rect x="60" y="106" width="440" height="2" fill="#1e1e38" opacity="0.8"/>
+<rect x="60" y="161" width="440" height="2" fill="#1e1e38" opacity="0.8"/>
+<rect x="60" y="206" width="440" height="2" fill="#1e1e38" opacity="0.8"/>
+<rect x="60" y="261" width="440" height="2" fill="#1e1e38" opacity="0.8"/>
+<!-- Vertical column dividers -->
+<rect x="115" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+<rect x="172" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+<rect x="228" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+<rect x="280" y="7" width="2" height="311" fill="#202040" opacity="0.9"/>
+<rect x="332" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+<rect x="388" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+<rect x="444" y="7" width="2" height="311" fill="#161630" opacity="0.7"/>
+
+<!-- FLOOR PERSPECTIVE (depth trapezoids) -->
+<rect x="60" y="258" width="440" height="60" fill="#0a0a18"/>
+<polygon points="60,258 60,318 118,318 155,258"  fill="#0d0d1e" opacity="0.7"/>
+<polygon points="118,318 178,318 210,258 155,258" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="178,318 238,318 260,258 210,258" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="238,318 280,318 280,258 260,258" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="280,318 342,318 300,258 280,258" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="342,318 400,318 350,258 300,258" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="400,318 460,318 405,258 350,258" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="460,318 500,318 500,258 405,258" fill="#0a0a1a" opacity="0.6"/>
+<rect x="60" y="315" width="440" height="3" fill="#1e1e40" opacity="0.8"/>
+
+<!-- CEILING PERSPECTIVE -->
+<rect x="60" y="7" width="440" height="36" fill="#0a0a18"/>
+<polygon points="60,7 60,43 120,43 155,7"   fill="#0d0d1e" opacity="0.7"/>
+<polygon points="120,43 180,43 210,7 155,7" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="180,43 240,43 260,7 210,7" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="240,43 280,43 280,7 260,7" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="280,43 342,43 300,7 280,7" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="342,43 400,43 350,7 295,7" fill="#0a0a1a" opacity="0.6"/>
+<polygon points="400,43 460,43 405,7 350,7" fill="#0d0d1e" opacity="0.7"/>
+<polygon points="460,43 500,43 500,7 405,7" fill="#0a0a1a" opacity="0.6"/>
+<rect x="60" y="8" width="440" height="3" fill="#1e1e40" opacity="0.8"/>
+
+<!-- NEON EDGE LINES (arena boundary glow) -->
+<!-- Left wall inner edge neon (blue) -->
+<rect x="58" y="7" width="3" height="311" fill="#2244ff" opacity="0.8"/>
+<rect x="57" y="7" width="2" height="311" fill="#4466ff" opacity="0.3"/>
+<!-- Right wall inner edge neon (orange) -->
+<rect x="499" y="7" width="3" height="311" fill="#ff5500" opacity="0.8"/>
+<rect x="501" y="7" width="2" height="311" fill="#ff7722" opacity="0.3"/>
+<!-- Ceiling neon -->
+<rect x="60" y="7" width="440" height="2" fill="#3355ff" opacity="0.6"/>
+<!-- Floor neon -->
+<rect x="60" y="316" width="440" height="2" fill="#3355ff" opacity="0.5"/>
+
+<!-- CROWD (top strip) -->
+<rect x="60" y="0" width="440" height="8" fill="#07071a"/>
+<ellipse cx="90"  cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="110" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="130" cy="6" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="150" cy="3" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="170" cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="190" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="210" cy="6" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="230" cy="3" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="250" cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="270" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="290" cy="6" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="310" cy="3" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="330" cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="350" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="370" cy="6" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="390" cy="3" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="410" cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="430" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="450" cy="6" rx="9" ry="5" fill="#0d0d1e"/>
+<ellipse cx="470" cy="4" rx="8" ry="5" fill="#0a0a1a"/>
+<ellipse cx="490" cy="5" rx="9" ry="5" fill="#0d0d1e"/>
+
+<!-- SPOTLIGHTS -->
+<polygon points="270,7 290,7 305,90 255,90" fill="#14143a" opacity="0.35"/>
+<polygon points="142,7 156,7 170,75 126,75" fill="#14143a" opacity="0.25"/>
+<polygon points="404,7 418,7 432,75 390,75" fill="#14143a" opacity="0.25"/>
+<rect x="268" y="4" width="22" height="4" fill="#eeeebb"/>
+<rect x="141" y="4" width="16" height="3" fill="#eeeebb"/>
+<rect x="403" y="4" width="16" height="3" fill="#eeeebb"/>
+
+<!-- Center divider (very faint) -->
+<rect x="279" y="7" width="2" height="311" fill="#ffffff" opacity="0.05"/>
+
+</g>
+</svg>
