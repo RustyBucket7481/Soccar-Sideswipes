@@ -63,6 +63,7 @@ const BOOST_MAX = 100;
 const S = { MENU:0, PLAY:1, GOAL:2, EXPL:3, PAUSE:4, KICKOFF:5, SETTINGS:6, WIN:7 };
 let state = S.SETTINGS;
 let pauseSel = 0;
+let settingsReturn = S.MENU;
 let kickoffTimer = 0;
 
 // ─── settings ─────────────────────────────────────────────────────────────────
@@ -165,8 +166,9 @@ canvas.addEventListener('mousemove', e => {
     return mouse.y >= ry && mouse.y <= ry+rowH-6 &&
       ((mouse.x >= 30 && mouse.x <= 30+colW) || (mouse.x >= W/2+10 && mouse.x <= W/2+10+colW)); });
   const inExplEnter = mouse.x >= W/2-115 && mouse.x <= W/2+115 && mouse.y >= H-70 && mouse.y <= H-26;
+  const ph2 = 248, poy2 = H/2 - ph2/2;
   const inPauseBtn = state === S.PAUSE && mouse.x >= W/2-120 && mouse.x <= W/2+120 &&
-    ((mouse.y >= poy+75 && mouse.y <= poy+111) || (mouse.y >= poy+130 && mouse.y <= poy+166));
+    ((mouse.y >= poy2+68 && mouse.y <= poy2+104) || (mouse.y >= poy2+120 && mouse.y <= poy2+156) || (mouse.y >= poy2+172 && mouse.y <= poy2+208));
   const inSettingsEnter = state === S.SETTINGS && mouse.x >= W/2-120 && mouse.x <= W/2+120 && mouse.y >= H-78 && mouse.y <= H-34;
   const inWinEnter = state === S.WIN && mouse.x >= W/2-140 && mouse.x <= W/2+140 && mouse.y >= 340 && mouse.y <= 390;
   canvas.style.cursor = (state === S.MENU && (inCarRow || inCarEnter)) ||
@@ -189,7 +191,10 @@ canvas.addEventListener('click', e => {
         else if (cx > W/2 + 100) sd.cur = (sd.cur + 1) % sd.vals.length;
       }
     }
-    if (cx >= W/2 - 120 && cx <= W/2 + 120 && cy >= H - 78 && cy <= H - 34) state = S.MENU;
+    if (cx >= W/2 - 120 && cx <= W/2 + 120 && cy >= H - 78 && cy <= H - 34) {
+      if (settingsReturn === S.PAUSE) { applySettings(); state = S.PAUSE; }
+      else { state = S.MENU; }
+    }
     return;
   }
   if (state === S.WIN) {
@@ -218,10 +223,11 @@ canvas.addEventListener('click', e => {
     }
     if (cx >= W/2-115 && cx <= W/2+115 && cy >= H-70 && cy <= H-26) startGame();
   } else if (state === S.PAUSE) {
-    const ph = 200, poy = H/2 - ph/2;
+    const ph = 248, poy = H/2 - ph/2;
     if (cx >= W/2-120 && cx <= W/2+120) {
-      if (cy >= poy+75 && cy <= poy+111) { state = S.PLAY; }
-      if (cy >= poy+130 && cy <= poy+166) { winner=''; bScore=0; oScore=0; state=S.SETTINGS; particles.length=0; }
+      if (cy >= poy+68  && cy <= poy+104) { state = S.PLAY; }
+      if (cy >= poy+120 && cy <= poy+156) { settingsReturn = S.PAUSE; state = S.SETTINGS; }
+      if (cy >= poy+172 && cy <= poy+208) { winner=''; bScore=0; oScore=0; settingsReturn=S.MENU; state=S.SETTINGS; particles.length=0; }
     }
   }
 });
@@ -243,7 +249,10 @@ function onMenuKey(k) {
     if (k === 'ArrowDown')  settingSel = (settingSel + 1) % SDEFS.length;
     if (k === 'ArrowLeft')  { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length; }
     if (k === 'ArrowRight') { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + 1) % sd.vals.length; }
-    if (k === 'Enter')      state = S.MENU;
+    if (k === 'Enter' || k === 'Escape') {
+      if (settingsReturn === S.PAUSE) { applySettings(); state = S.PAUSE; }
+      else { state = S.MENU; }
+    }
     return;
   }
   if (state === S.WIN) {
@@ -273,9 +282,10 @@ function onMenuKey(k) {
     state = S.PAUSE; pauseSel = 0;
   } else if (state === S.PAUSE) {
     if (k === 'Escape' || (k === 'Enter' && pauseSel === 0)) { state = S.PLAY; }
-    else if (k === 'Enter' && pauseSel === 1) { winner=''; bScore=0; oScore=0; state=S.SETTINGS; particles.length=0; }
-    else if (k === 'ArrowUp') pauseSel = 0;
-    else if (k === 'ArrowDown') pauseSel = 1;
+    else if (k === 'Enter' && pauseSel === 1) { settingsReturn = S.PAUSE; state = S.SETTINGS; }
+    else if (k === 'Enter' && pauseSel === 2) { winner=''; bScore=0; oScore=0; state=S.SETTINGS; settingsReturn=S.MENU; particles.length=0; }
+    else if (k === 'ArrowUp')   pauseSel = (pauseSel + 2) % 3;
+    else if (k === 'ArrowDown') pauseSel = (pauseSel + 1) % 3;
   }
 }
 
@@ -345,10 +355,45 @@ function demoCar(c, fast) {
   if (c.demoTimer > 0) return;
   c.demoTimer = fast ? 90 : 180;
   c.vx = c.vy = c.angV = 0;
-  const col = c.team === 'blue' ? '#4488ff' : '#ff7733';
-  emitParticles(c.x, c.y, 25, col, 10, 4);
-  emitParticles(c.x, c.y, 15, '#ffffff', 8, 2);
-  shake = Math.max(shake, 4);
+  const cx = c.x, cy = c.y - CH / 2;
+
+  flashCol = '#fff5e0'; flashAlpha = Math.min(flashAlpha + 0.45, 0.7);
+  shake = Math.max(shake, 7);
+
+  // Explosion ring
+  spawnRing(cx, cy, 12, 16, 'rgba(255,160,40,0.90)', 6);
+  spawnRing(cx, cy,  7, 26, 'rgba(20,10,4,0.80)', 16);
+
+  // White-hot core flash
+  for (let i = 0; i < 20; i++) {
+    const a = Math.random()*Math.PI*2, s = 8+Math.random()*18;
+    particles.push({ x:cx, y:cy, vx:Math.cos(a)*s, vy:Math.sin(a)*s-5,
+      life:1, maxLife:10+Math.random()*10, r:2+Math.random()*5, col:'#ffffff' });
+  }
+  // Fire burst
+  const firePal = ['#ff5500','#ff3300','#ff8800','#cc2200','#ff6600'];
+  for (let i = 0; i < 45; i++) {
+    const a = Math.random()*Math.PI*2, s = 4+Math.random()*22;
+    particles.push({ x:cx, y:cy, vx:Math.cos(a)*s, vy:Math.sin(a)*s - s*0.3,
+      life:1, maxLife:20+Math.random()*20, r:3+Math.random()*9,
+      col:firePal[Math.floor(Math.random()*firePal.length)] });
+  }
+  // Heavy black smoke — drifts upward, lives long
+  for (let i = 0; i < 32; i++) {
+    const r = Math.floor(Math.random()*18)+8, g = Math.floor(Math.random()*10)+4;
+    particles.push({ x:cx+(Math.random()-0.5)*28, y:cy,
+      vx:(Math.random()-0.5)*2.2, vy:-3.5-Math.random()*7,
+      life:1, maxLife:120+Math.random()*80, r:14+Math.random()*22,
+      col:`rgba(${r},${g},2,0.72)`, noGrav:true });
+  }
+  // Charred debris
+  for (let i = 0; i < 18; i++) {
+    const a = Math.random()*Math.PI*2, s = 4+Math.random()*14;
+    particles.push({ x:cx, y:cy, vx:Math.cos(a)*s, vy:Math.sin(a)*s-4,
+      life:1, maxLife:55+Math.random()*45, r:3+Math.random()*8,
+      col:['#1a0800','#2a1000','#0a0400','#331200'][Math.floor(Math.random()*4)],
+      shape:'rect', angle:Math.random()*Math.PI*2, angV:(Math.random()-0.5)*0.22 });
+  }
 }
 
 function updateCar(c, lk, rk, jk, bk) {
@@ -424,6 +469,17 @@ function updateCar(c, lk, rk, jk, bk) {
 
   if (c.y >= FLOOR)     { c.y = FLOOR;     c.vy = 0; c.ground = true; c.jumps = 0; }
   if (c.y - CH <= CEIL) { c.y = CEIL + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
+
+  // Goal interior floor/ceiling — prevents car from falling out of the goal
+  if (c.x - CW/2 < WL && c.x - CW/2 >= CLIP_L) {
+    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
+    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
+  }
+  if (c.x + CW/2 > WR && c.x + CW/2 <= CLIP_R) {
+    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
+    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
+  }
+
   const inGoalGap = c.y > GT_TOP + 4 && c.y - CH < GT_BOT - 4;
   if (c.x - CW/2 < WL) {
     if (inGoalGap) { if (c.x - CW/2 < CLIP_L) { c.x = CLIP_L+CW/2; c.vx =  Math.abs(c.vx)*C_BOUNCE; } }
@@ -461,6 +517,21 @@ function updateCar(c, lk, rk, jk, bk) {
 
 }
 
+// Circle vs point collision for goal post corners
+function resolveCorner(px, py) {
+  const dx = ball.x - px, dy = ball.y - py;
+  const d = Math.hypot(dx, dy);
+  if (d >= BALL_R || d < 0.01) return;
+  const nx = dx / d, ny = dy / d;
+  ball.x += nx * (BALL_R - d);
+  ball.y += ny * (BALL_R - d);
+  const dot = ball.vx * nx + ball.vy * ny;
+  if (dot < 0) {
+    ball.vx -= dot * nx * (1 + B_BOUNCE);
+    ball.vy -= dot * ny * (1 + B_BOUNCE);
+  }
+}
+
 function updateBall() {
   ball.vy += B_GRAV;
   ball.vx *= B_FRIC;
@@ -472,19 +543,24 @@ function updateBall() {
   if (ball.y + BALL_R >= FLOOR) {
     ball.y  = FLOOR - BALL_R;
     ball.vy = -Math.abs(ball.vy) * B_BOUNCE;
-    ball.vx *= 0.96;   // much less ground friction — ball rolls freely
+    ball.vx *= 0.96;
   }
   if (ball.y - BALL_R <= CEIL) {
     ball.y  = CEIL + BALL_R;
     ball.vy = Math.abs(ball.vy) * B_BOUNCE;
   }
 
-  // left wall / goal — ball must travel all the way to the back of the net
+  // Accurate goal post corner bounces — must run before wall checks
+  resolveCorner(WL, GT_TOP);
+  resolveCorner(WL, GT_BOT);
+  resolveCorner(WR, GT_TOP);
+  resolveCorner(WR, GT_BOT);
+
+  // left wall / goal — ball enters only if its full circle fits through the opening
   if (ball.x - BALL_R <= WL) {
-    if (ball.y >= GT_TOP && ball.y <= GT_BOT) {
-      // Inside goal opening: let ball travel freely, score at back wall
+    const inGap = ball.y + BALL_R > GT_TOP && ball.y - BALL_R < GT_BOT;
+    if (inGap) {
       if (ball.x - BALL_R <= CLIP_L && state === S.PLAY) score('orange');
-      // Bounce off top/bottom goal bars while inside net
       if (ball.y - BALL_R < GT_TOP) { ball.y = GT_TOP + BALL_R; ball.vy =  Math.abs(ball.vy) * B_BOUNCE; }
       if (ball.y + BALL_R > GT_BOT) { ball.y = GT_BOT - BALL_R; ball.vy = -Math.abs(ball.vy) * B_BOUNCE; }
     } else {
@@ -494,7 +570,8 @@ function updateBall() {
   }
   // right wall / goal
   if (ball.x + BALL_R >= WR) {
-    if (ball.y >= GT_TOP && ball.y <= GT_BOT) {
+    const inGap = ball.y + BALL_R > GT_TOP && ball.y - BALL_R < GT_BOT;
+    if (inGap) {
       if (ball.x + BALL_R >= CLIP_R && state === S.PLAY) score('blue');
       if (ball.y - BALL_R < GT_TOP) { ball.y = GT_TOP + BALL_R; ball.vy =  Math.abs(ball.vy) * B_BOUNCE; }
       if (ball.y + BALL_R > GT_BOT) { ball.y = GT_BOT - BALL_R; ball.vy = -Math.abs(ball.vy) * B_BOUNCE; }
@@ -1429,7 +1506,7 @@ function drawSettings() {
   ctx.strokeStyle = `rgba(68,204,68,${pulse})`; ctx.lineWidth = 2; ctx.stroke();
   ctx.fillStyle = `rgba(136,255,136,${0.7+0.3*pulse})`;
   ctx.font = 'bold 16px "Arial Black",Arial'; ctx.textAlign = 'center';
-  ctx.fillText('ENTER → Choose Cars', W/2, H - 48);
+  ctx.fillText(settingsReturn === S.PAUSE ? 'ENTER → Apply & Resume' : 'ENTER → Choose Cars', W/2, H - 48);
 
   ctx.font = '11px Arial'; ctx.fillStyle = '#445566';
   ctx.fillText('↑ ↓  select   ◄ ►  change', W/2, H - 18);
@@ -1710,21 +1787,24 @@ function drawPause() {
   ctx.fillStyle = 'rgba(0,0,12,0.72)';
   ctx.fillRect(0, 0, W, H);
 
-  const pw = 320, ph = 200, px = W/2 - pw/2, py = H/2 - ph/2;
+  const pw = 320, ph = 248, px = W/2 - pw/2, poy = H/2 - ph/2;
   ctx.fillStyle = 'rgba(10,10,30,0.96)';
-  rrect(px, py, pw, ph, 12); ctx.fill();
+  rrect(px, poy, pw, ph, 12); ctx.fill();
   ctx.strokeStyle = 'rgba(120,120,200,0.45)'; ctx.lineWidth = 1.5;
-  rrect(px, py, pw, ph, 12); ctx.stroke();
+  rrect(px, poy, pw, ph, 12); ctx.stroke();
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 32px "Arial Black",Arial';
-  ctx.fillText('PAUSED', W/2, py + 48);
+  ctx.fillText('PAUSED', W/2, poy + 46);
 
-  const opts = [{ label:'CONTINUE', col:['rgba(30,100,30,0.5)','rgba(80,220,80,0.7)','#88ff88'] },
-                { label:'BACK TO START', col:['rgba(100,30,30,0.5)','rgba(220,80,80,0.7)','#ff8888'] }];
+  const opts = [
+    { label:'CONTINUE',   col:['rgba(30,100,30,0.5)', 'rgba(80,220,80,0.7)', '#88ff88'] },
+    { label:'SETTINGS',   col:['rgba(20,60,130,0.5)', 'rgba(80,140,255,0.7)','#88bbff'] },
+    { label:'MAIN MENU',  col:['rgba(100,30,30,0.5)', 'rgba(220,80,80,0.7)', '#ff8888'] },
+  ];
   opts.forEach((o, i) => {
-    const oy = py + 75 + i * 55;
+    const oy = poy + 68 + i * 52;
     const sel = pauseSel === i;
     ctx.fillStyle = sel ? o.col[0] : 'rgba(255,255,255,0.04)';
     rrect(W/2-120, oy, 240, 36, 6); ctx.fill();
@@ -1736,7 +1816,7 @@ function drawPause() {
 
   ctx.fillStyle = 'rgba(255,255,255,0.28)';
   ctx.font = '11px Arial';
-  ctx.fillText('↑ ↓ navigate   Enter confirm   Esc unpause', W/2, py + ph - 12);
+  ctx.fillText('↑ ↓ navigate   Enter confirm   Esc unpause', W/2, poy + ph - 12);
   ctx.restore();
   drawHUD();
 }
