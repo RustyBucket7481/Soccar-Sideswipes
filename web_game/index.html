@@ -189,6 +189,7 @@ canvas.addEventListener('click', e => {
         if (cx >= W/2 + 20 && cx < W/2 + 100) sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length;
         else if (cx >= W/2 + 200) sd.cur = (sd.cur + 1) % sd.vals.length;
         else if (cx > W/2 + 100) sd.cur = (sd.cur + 1) % sd.vals.length;
+        if (i === 1 && sd.cur === 1) { SDEFS[2].cur = 7; SDEFS[4].cur = 1; }
       }
     }
     if (cx >= W/2 - 120 && cx <= W/2 + 120 && cy >= H - 78 && cy <= H - 34) {
@@ -247,8 +248,8 @@ function onMenuKey(k) {
   if (state === S.SETTINGS) {
     if (k === 'ArrowUp')    settingSel = (settingSel + SDEFS.length - 1) % SDEFS.length;
     if (k === 'ArrowDown')  settingSel = (settingSel + 1) % SDEFS.length;
-    if (k === 'ArrowLeft')  { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length; }
-    if (k === 'ArrowRight') { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + 1) % sd.vals.length; }
+    if (k === 'ArrowLeft')  { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length; if (settingSel===1 && sd.cur===1) { SDEFS[2].cur=7; SDEFS[4].cur=1; } }
+    if (k === 'ArrowRight') { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + 1) % sd.vals.length;                   if (settingSel===1 && sd.cur===1) { SDEFS[2].cur=7; SDEFS[4].cur=1; } }
     if (k === 'Enter' || k === 'Escape') {
       if (settingsReturn === S.PAUSE) { applySettings(); state = S.PAUSE; }
       else { state = S.MENU; }
@@ -331,6 +332,8 @@ function spawnObjects() {
   shake = 0;
   if (winner !== '') {
     state = S.WIN;
+  } else if (SDEFS[1].cur === 1) {
+    state = S.PLAY;   // Free play: no kickoff countdown
   } else {
     state  = S.KICKOFF;
     kickoffTimer = 150;
@@ -338,6 +341,10 @@ function spawnObjects() {
 }
 
 function applySettings() {
+  if (SDEFS[1].cur === 1) {   // Free Play: force unlimited time + boost
+    SDEFS[2].cur = 7;
+    SDEFS[4].cur = 1;
+  }
   GRAV   = GRAVITY_VALS[SDEFS[0].cur];
   B_GRAV = BGRAV_VALS[SDEFS[0].cur];
   const tf = TIMER_FRAMES[SDEFS[2].cur];
@@ -470,16 +477,6 @@ function updateCar(c, lk, rk, jk, bk) {
   if (c.y >= FLOOR)     { c.y = FLOOR;     c.vy = 0; c.ground = true; c.jumps = 0; }
   if (c.y - CH <= CEIL) { c.y = CEIL + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
 
-  // Goal interior floor/ceiling — prevents car from falling out of the goal
-  if (c.x - CW/2 < WL && c.x - CW/2 >= CLIP_L) {
-    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
-    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
-  }
-  if (c.x + CW/2 > WR && c.x + CW/2 <= CLIP_R) {
-    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
-    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
-  }
-
   const inGoalGap = c.y > GT_TOP + 4 && c.y - CH < GT_BOT - 4;
   if (c.x - CW/2 < WL) {
     if (inGoalGap) { if (c.x - CW/2 < CLIP_L) { c.x = CLIP_L+CW/2; c.vx =  Math.abs(c.vx)*C_BOUNCE; } }
@@ -490,18 +487,33 @@ function updateCar(c, lk, rk, jk, bk) {
     else { c.x = WR-CW/2; c.vx = -Math.abs(c.vx)*C_BOUNCE; }
   }
 
+  // Goal interior floor/ceiling — only runs after wall check, so car must truly be inside
+  if (c.x - CW/2 < WL) {
+    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
+    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
+  }
+  if (c.x + CW/2 > WR) {
+    if (c.y >= GT_BOT) { c.y = GT_BOT; c.vy = 0; c.ground = true; c.jumps = 0; }
+    if (c.y - CH <= GT_TOP) { c.y = GT_TOP + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
+  }
+
   // Standing on the other car: treat as grounded, driving pushes the bottom car.
   if (!c.ground) {
     const other = c === blue ? orange : blue;
-    if (other) {
+    if (other && other.demoTimer <= 0) {
       const onTop = c.y <= other.y - CH + 3 &&
                     c.y >= other.y - CH - 6 &&
                     Math.abs(c.x - other.x) < CW * 0.9;
       if (onTop) {
-        c.y      = other.y - CH;
-        c.vy     = 0;
-        c.ground = true;
-        c.jumps  = 0;
+        if (SDEFS[3].cur === 2) {
+          // On Contact: landing on roof demos both
+          demoCar(c, true); demoCar(other, true);
+        } else {
+          c.y      = other.y - CH;
+          c.vy     = 0;
+          c.ground = true;
+          c.jumps  = 0;
+        }
       }
     }
   }
