@@ -60,25 +60,35 @@ const MAX_SPD   = 20;
 const BOOST_MAX = 100;
 
 // ─── state ────────────────────────────────────────────────────────────────────
-const S = { MENU:0, PLAY:1, GOAL:2, EXPL:3, PAUSE:4, KICKOFF:5, SETTINGS:6, WIN:7 };
-let state = S.SETTINGS;
+const S = { MENU:0, PLAY:1, GOAL:2, EXPL:3, PAUSE:4, KICKOFF:5, SETTINGS:6, WIN:7, TITLE:8 };
+let state = S.TITLE;
 let pauseSel = 0;
 let settingsReturn = S.MENU;
 let kickoffTimer = 0;
+let grassEnabled = false;
+let eggBuffer = '';
+
+// ─── title screen animation state ──────────────────────────────────────────────
+let titleBall = { x: 400, y: 282, vx: -1.8, vy: -5.0, spin: 0 };
+let titleSeq  = 0;
+let tBlue   = { x: 195, y: 310, vx: 2.0, vy: 0, angle: 0, facing: 1,  boosting: true };
+let tOrange = { x: 605, y: 310, vx: -2.0, vy: 0, angle: 0, facing: -1, boosting: true };
 
 // ─── settings ─────────────────────────────────────────────────────────────────
 const SDEFS = [
-  { label:'GRAVITY', vals:['Very Low','Low','Normal','High','Very High'], cur:2 },
+  { label:'GRAVITY', vals:['None','Low','Normal','High','Very High'],     cur:2 },
   { label:'MODE',    vals:['Game','Free Play'],                           cur:0 },
-  { label:'TIMER',   vals:['1 Min','2 Min','3 Min','5 Min','First to 3','First to 5','First to 10','Unlimited'], cur:2 },
+  { label:'TIMER',   vals:['1 Min','2 Min','3 Min','5 Min','First to 3','First to 5','First to 10','Unlimited'], cur:3 },
   { label:'DEMOS',   vals:['None','Normal','On Contact'],                 cur:0 },
-  { label:'BOOST',   vals:['Limited','Unlimited'],                        cur:0 },
+  { label:'BOOST',   vals:['Limited','Unlimited'],                        cur:1 },
+  { label:'JUMPS',   vals:['Normal','3','4','5','Unlimited'],             cur:0 },
 ];
 let settingSel = 0;
-const GRAVITY_VALS = [0.045, 0.10, 0.175, 0.27, 0.38];
-const BGRAV_VALS   = [0.012, 0.035, 0.07, 0.11, 0.16];
+const GRAVITY_VALS = [0, 0.10, 0.175, 0.27, 0.38];
+const BGRAV_VALS   = [0, 0.035, 0.07, 0.11, 0.16];
 const TIMER_FRAMES = [3600, 7200, 10800, 18000, -1, -1, -1, -1];
 let gameTimer = 0;  // counts down in frames; -1 = score-based or unlimited
+let playTime  = 0;  // counts up in frames for unlimited mode display
 let winner    = '';
 let bScore = 0, oScore = 0;
 let bCar = 0, oCar = 0;      // 0=Fennec  1=Dominus  2=Merc
@@ -103,6 +113,17 @@ function emitParticles(x, y, n, col, speed, size) {
 function updateParticles() {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
+    if (p.swerveAmp) {
+      const t = (1 - p.life) * p.maxLife;
+      const spd = Math.hypot(p.vx, p.vy);
+      if (spd > 0.1) {
+        const nx = -p.vy / spd, ny = p.vx / spd;
+        const lat = Math.sin(t * p.swerveFreq + p.swervePhase) * p.swerveAmp;
+        p.vx += nx * lat; p.vy += ny * lat;
+        const ns = Math.hypot(p.vx, p.vy);
+        if (ns > 0.01) { p.vx = p.vx / ns * spd; p.vy = p.vy / ns * spd; }
+      }
+    }
     p.x += p.vx; p.y += p.vy;
     p.vy += (p.noGrav ? 0 : 0.15);
     if (!p.noFric) { p.vx *= 0.92; p.vy *= 0.92; }
@@ -179,8 +200,9 @@ canvas.addEventListener('click', e => {
   const scaleX = W / r.width, scaleY = H / r.height;
   const cx = (e.clientX - r.left) * scaleX;
   const cy = (e.clientY - r.top)  * scaleY;
+  if (state === S.TITLE) { state = S.SETTINGS; return; }
   if (state === S.SETTINGS) {
-    const rowH = 54, startY = 168;
+    const rowH = 46, startY = 150;
     for (let i = 0; i < SDEFS.length; i++) {
       const y = startY + i * rowH;
       if (cy >= y - 22 && cy <= y + 24) {
@@ -238,6 +260,10 @@ document.addEventListener('keydown', e => {
   keys[k] = true;
   if (GAME_KEYS.has(k)) e.preventDefault();
   onMenuKey(k);
+  if (k.length === 1) {
+    eggBuffer = (eggBuffer + k).slice(-8);
+    if (eggBuffer.includes('judah')) { grassEnabled = !grassEnabled; eggBuffer = ''; }
+  }
 });
 document.addEventListener('keyup', e => {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -245,6 +271,7 @@ document.addEventListener('keyup', e => {
 });
 
 function onMenuKey(k) {
+  if (state === S.TITLE) { state = S.SETTINGS; return; }
   if (state === S.SETTINGS) {
     if (k === 'ArrowUp')    settingSel = (settingSel + SDEFS.length - 1) % SDEFS.length;
     if (k === 'ArrowDown')  settingSel = (settingSel + 1) % SDEFS.length;
@@ -332,6 +359,7 @@ function spawnObjects() {
   particles.length = 0;
   flashAlpha = 0;
   shake = 0;
+  playTime = 0;
   if (winner !== '') {
     state = S.WIN;
   } else if (SDEFS[1].cur === 1) {
@@ -436,7 +464,8 @@ function updateCar(c, lk, rk, jk, bk) {
   else if (c.ground && state === S.PLAY) c.boost = Math.min(BOOST_MAX, c.boost + 0.35);
 
   if (keys[jk]) {
-    if (!c.jumpPressed && c.jumps < 2) {
+    const maxJumps = [2,3,4,5,Infinity][SDEFS[5].cur];
+    if (!c.jumpPressed && c.jumps < maxJumps) {
       if (c.jumps === 0) {
         c.vy -= JUMP_F;                           // first jump: always straight up
       } else {
@@ -468,15 +497,21 @@ function updateCar(c, lk, rk, jk, bk) {
 
   // gravity + friction on both axes (Scratch applies same friction to xv AND yv AND turn)
   c.vy += GRAV;
-  c.vx *= FRIC;
-  c.vy *= FRIC;
+  if (GRAV > 0) { c.vx *= FRIC; c.vy *= FRIC; }
   c.vx  = Math.max(-MAX_SPD, Math.min(MAX_SPD, c.vx));
 
   c.x += c.vx;
   c.y += c.vy;
   c.ground = false;
 
-  if (c.y >= FLOOR)     { c.y = FLOOR;     c.vy = 0; c.ground = true; c.jumps = 0; }
+  if (c.y >= FLOOR) {
+    c.y = FLOOR;
+    if (GRAV === 0 && Math.abs(c.vy) > 0.8) {
+      c.vy = -Math.abs(c.vy) * 0.72;  // elastic bounce in 0g
+    } else {
+      c.vy = 0; c.ground = true; c.jumps = 0;
+    }
+  }
   if (c.y - CH <= CEIL) { c.y = CEIL + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
 
   const inGoalGap = c.y > GT_TOP + 4 && c.y - CH < GT_BOT - 4;
@@ -521,18 +556,25 @@ function updateCar(c, lk, rk, jk, bk) {
   }
 
   if (!c.ground) {
-    c.angV *= FRIC;
+    if (GRAV > 0) c.angV *= FRIC;  // 0g: no spin friction — spin up freely forever
     c.angle += c.angV;
   } else {
-    c.angle *= 0.1;
-    c.angV   = 0;
-    if (Math.abs(c.angle) < 0.5) c.angle = 0;
+    if (GRAV > 0) {
+      c.angle *= 0.1;
+      c.angV   = 0;
+      if (Math.abs(c.angle) < 0.5) c.angle = 0;
+    } else {
+      c.angle += c.angV;  // keep spinning on floor in 0g
+    }
   }
 
 }
 
 // Circle vs point collision for goal post corners
-function resolveCorner(px, py) {
+function resolveCorner(px, py, side) {
+  // Skip when ball is already inside the goal — otherwise the push vector points further in
+  if (side < 0 && ball.x < px) return;
+  if (side > 0 && ball.x > px) return;
   const dx = ball.x - px, dy = ball.y - py;
   const d = Math.hypot(dx, dy);
   if (d >= BALL_R || d < 0.01) return;
@@ -564,15 +606,15 @@ function updateBall() {
     ball.vy = Math.abs(ball.vy) * B_BOUNCE;
   }
 
-  // Accurate goal post corner bounces — must run before wall checks
-  resolveCorner(WL, GT_TOP);
-  resolveCorner(WL, GT_BOT);
-  resolveCorner(WR, GT_TOP);
-  resolveCorner(WR, GT_BOT);
+  // Accurate goal post corner bounces — only when ball is still outside the goal
+  resolveCorner(WL, GT_TOP, -1);
+  resolveCorner(WL, GT_BOT, -1);
+  resolveCorner(WR, GT_TOP,  1);
+  resolveCorner(WR, GT_BOT,  1);
 
-  // left wall / goal — ball enters only if its full circle fits through the opening
+  // left wall / goal — center-based inGap avoids the snap-teleport at the post edge
   if (ball.x - BALL_R <= WL) {
-    const inGap = ball.y + BALL_R > GT_TOP && ball.y - BALL_R < GT_BOT;
+    const inGap = ball.y > GT_TOP && ball.y < GT_BOT;
     if (inGap) {
       if (ball.x - BALL_R <= CLIP_L && state === S.PLAY) score('orange');
       if (ball.y - BALL_R < GT_TOP) { ball.y = GT_TOP + BALL_R; ball.vy =  Math.abs(ball.vy) * B_BOUNCE; }
@@ -584,7 +626,7 @@ function updateBall() {
   }
   // right wall / goal
   if (ball.x + BALL_R >= WR) {
-    const inGap = ball.y + BALL_R > GT_TOP && ball.y - BALL_R < GT_BOT;
+    const inGap = ball.y > GT_TOP && ball.y < GT_BOT;
     if (inGap) {
       if (ball.x + BALL_R >= CLIP_R && state === S.PLAY) score('blue');
       if (ball.y - BALL_R < GT_TOP) { ball.y = GT_TOP + BALL_R; ball.vy =  Math.abs(ball.vy) * B_BOUNCE; }
@@ -633,11 +675,13 @@ function spawnAirStrikeMissile(fromRight, frames) {
   const sy = CEIL - 10 - Math.random()*30;
   const vx = (tx - sx) / frames;
   const vy = (ty - sy) / frames;
+  const swervePhase = Math.random() * Math.PI * 2;
+  const sw = { swerveAmp:0.055, swerveFreq:0.09, swervePhase };
   // Layered missile head: smoke halo → warm bright → white-hot core
-  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:24, lineHeight:11, lineLen:110, col:'rgba(210,215,220,0.28)', shape:'line', noGrav:true, noFric:true });
-  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:18, lineHeight:7,  lineLen:85,  col:'rgba(255,248,210,0.55)', shape:'line', noGrav:true, noFric:true });
-  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:12, lineHeight:5,  lineLen:60,  col:'#fffff0', shape:'line', noGrav:true, noFric:true });
-  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:6,  lineHeight:3,  lineLen:38,  col:'#ffffff', shape:'line', noGrav:true, noFric:true });
+  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:24, lineHeight:11, lineLen:110, col:'rgba(210,215,220,0.28)', shape:'line', noGrav:true, noFric:true, ...sw });
+  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:18, lineHeight:7,  lineLen:85,  col:'rgba(255,248,210,0.55)', shape:'line', noGrav:true, noFric:true, ...sw });
+  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:12, lineHeight:5,  lineLen:60,  col:'#fffff0', shape:'line', noGrav:true, noFric:true, ...sw });
+  particles.push({ x:sx, y:sy, vx, vy, life:1, maxLife:frames, r:6,  lineHeight:3,  lineLen:38,  col:'#ffffff', shape:'line', noGrav:true, noFric:true, ...sw });
   // Exhaust trail — white hot at head fading to grey smoke
   const trailCols = ['#ffffff','#f5f0e8','#e0d8cc','#c0b8aa','#a09080','#807060','#555045'];
   for (let j = 1; j <= 20; j++) {
@@ -1003,6 +1047,26 @@ function drawArena() {
   flGrd.addColorStop(0.6, 'rgba(80,110,255,0.25)');
   flGrd.addColorStop(1, 'rgba(20,30,70,0)');
   ctx.fillStyle = flGrd; ctx.fillRect(WL, FLOOR - 12, WR - WL, 20);
+
+  // grass strip along the floor (easter egg: type "judah" to toggle)
+  if (grassEnabled) {
+    const grassBase = ctx.createLinearGradient(0, FLOOR - 8, 0, FLOOR);
+    grassBase.addColorStop(0, 'rgba(20,110,38,0.90)');
+    grassBase.addColorStop(1, 'rgba(8,50,16,0.98)');
+    ctx.fillStyle = grassBase;
+    ctx.fillRect(WL, FLOOR - 5, WR - WL, 6);
+    for (let bx = WL + 2; bx < WR; bx += 4) {
+      const h = 5 + (Math.sin(bx * 0.31) * 0.5 + 0.5) * 6;
+      const lean = Math.sin(bx * 0.19) * 3;
+      const bright = Math.sin(bx * 0.47) > 0;
+      ctx.strokeStyle = bright ? 'rgba(75,220,85,0.80)' : 'rgba(40,160,52,0.88)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(bx, FLOOR - 1);
+      ctx.quadraticCurveTo(bx + lean * 0.5, FLOOR - h * 0.55, bx + lean, FLOOR - h);
+      ctx.stroke();
+    }
+  }
 
   // center tick marks on ceiling and floor (RL kickoff indicator)
   ctx.strokeStyle = 'rgba(140,180,255,0.40)'; ctx.lineWidth = 1.5;
@@ -1394,7 +1458,7 @@ function drawScoreboard() {
   drawScore(W/2 - 16, 7, bScore, 1.3, '#4499ff', '#08122a', false);
   drawScore(W/2 + 16, 7, oScore, 1.3, '#ff8833', '#200a00', true);
 
-  // Timer display
+  // Timer display (inside scoreboard bar)
   ctx.textAlign = 'center';
   if (gameTimer > 0) {
     const secs = Math.ceil(gameTimer / 60);
@@ -1403,11 +1467,23 @@ function drawScoreboard() {
     ctx.font = 'bold 13px "Arial Black",Arial';
     ctx.fillStyle = secs <= 10 ? '#ff4444' : '#8888bb';
     ctx.fillText(timeStr, W/2, SB - 6);
-  } else if (SDEFS[2].cur >= 4 && SDEFS[2].cur <= 6) {
+  } else if (SDEFS[2].cur === 7 && SDEFS[1].cur === 0) {
+    // Unlimited: count-up clock
+    const secs = Math.floor(playTime / 60);
+    const mm = Math.floor(secs / 60), ss = secs % 60;
+    ctx.font = 'bold 13px "Arial Black",Arial';
+    ctx.fillStyle = '#556688';
+    ctx.fillText(mm + ':' + ss.toString().padStart(2,'0'), W/2, SB - 6);
+  }
+
+  // "First to X" sub-label — drawn just below the bar so it doesn't overlap scores
+  if (SDEFS[2].cur >= 4 && SDEFS[2].cur <= 6) {
     const targets = [3, 5, 10];
     const target = targets[SDEFS[2].cur - 4];
-    ctx.font = '10px Arial'; ctx.fillStyle = '#445566';
-    ctx.fillText('FIRST TO ' + target, W/2, SB - 6);
+    ctx.fillStyle = 'rgba(10,12,30,0.72)';
+    ctx.fillRect(W/2 - 44, SB + 4, 88, 16);
+    ctx.font = 'bold 10px "Arial Black",Arial'; ctx.fillStyle = '#4466aa';
+    ctx.fillText('FIRST TO ' + target, W/2, SB + 15);
   }
 
   boostBar(53,    SB-12, blue,   '#4488ff');
@@ -1422,9 +1498,277 @@ function boostBar(x, y, car, col) {
   ctx.fillStyle = pct > 0.6 ? '#ffcc00' : pct > 0.25 ? '#ff8800' : '#ff2200';
   ctx.fillRect(x, y, pct*bw, bh);
   ctx.strokeStyle = '#2a2a55'; ctx.lineWidth = 1; ctx.strokeRect(x, y, bw, bh);
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.font = '8px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('BOOST', x, y-2);
+  ctx.fillText('BOOST', x + bw + 4, y + bh);
+}
+
+// ─── title screen ─────────────────────────────────────────────────────────────
+function drawMiniCar(x, y, angle, facing, isBlue, boosting) {
+  const hw = CW / 2, h = CH;
+  const cMid  = isBlue ? '#3a80ff' : '#ff6600';
+  const cBody = isBlue ? '#1e50cc' : '#cc4400';
+  const cDark = isBlue ? '#0a1840' : '#200800';
+  const cEng  = isBlue ? '#44aaff' : '#ff6622';
+  ctx.save();
+  ctx.translate(x, y);
+  if (facing < 0) ctx.scale(-1, 1);
+  ctx.rotate(angle * Math.PI / 180);
+  if (boosting) {
+    const fl = 12 + Math.sin(frame * 0.5) * 4;
+    ctx.globalAlpha = 0.85; ctx.fillStyle = cEng;
+    ctx.beginPath(); ctx.moveTo(-hw,-h*0.68); ctx.lineTo(-hw-fl*1.1,-h*0.35); ctx.lineTo(-hw,-h*0.08); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.moveTo(-hw,-h*0.62); ctx.lineTo(-hw-fl*0.5,-h*0.35); ctx.lineTo(-hw,-h*0.14); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = cDark; ctx.fillRect(-hw,-h*0.18,CW,h*0.18);
+  const bG = ctx.createLinearGradient(0,-h,0,0);
+  bG.addColorStop(0,cMid); bG.addColorStop(0.55,cBody); bG.addColorStop(1,cDark);
+  ctx.fillStyle = bG;
+  ctx.beginPath();
+  ctx.moveTo(-hw,-h*0.92); ctx.lineTo(-hw*0.08,-h); ctx.lineTo(hw*0.52,-h*0.68);
+  ctx.lineTo(hw,-h*0.42); ctx.lineTo(hw,-h*0.18); ctx.lineTo(-hw,-h*0.18);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(180,220,255,0.38)';
+  ctx.beginPath(); ctx.moveTo(-hw*0.05,-h*0.92); ctx.lineTo(-hw*0.02,-h*0.98);
+  ctx.lineTo(hw*0.28,-h*0.80); ctx.lineTo(-hw*0.03,-h*0.66); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = cEng; ctx.shadowColor = cEng; ctx.shadowBlur = boosting ? 8 : 3;
+  ctx.fillRect(-hw,-h*0.70,3,h*0.48); ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff'; ctx.shadowColor = '#aaddff'; ctx.shadowBlur = 5;
+  ctx.beginPath(); ctx.arc(hw-2,-h*0.42,2,0,Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+  for (const wx of [-hw*0.52, hw*0.52]) {
+    ctx.fillStyle = '#252535'; ctx.beginPath(); ctx.arc(wx,-1,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#5566aa'; ctx.beginPath(); ctx.arc(wx,-1,2,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawTitle() {
+  ctx.save();
+
+  // Background
+  ctx.fillStyle = '#03040f'; ctx.fillRect(0, 0, W, H);
+
+  // Aurora ribbons
+  const auroras = [
+    { yBase:55,  speed:0.007, phase:0,   colMid:'rgba(0,180,255,',  colEnd:'rgba(0,80,200,'  },
+    { yBase:105, speed:0.009, phase:2.1, colMid:'rgba(140,0,255,',  colEnd:'rgba(60,0,180,'  },
+    { yBase:78,  speed:0.011, phase:4.3, colMid:'rgba(0,255,160,',  colEnd:'rgba(0,130,80,'  },
+  ];
+  for (const au of auroras) {
+    const a = 0.055 + 0.025*Math.sin(frame*au.speed*0.7+au.phase+1);
+    const grad = ctx.createLinearGradient(0,au.yBase-22,0,au.yBase+58);
+    grad.addColorStop(0,au.colMid+'0)'); grad.addColorStop(0.3,au.colMid+a+')');
+    grad.addColorStop(0.7,au.colEnd+(a*0.65)+')'); grad.addColorStop(1,au.colEnd+'0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.moveTo(0,au.yBase+65);
+    for (let x=0; x<=W; x+=40) ctx.lineTo(x,au.yBase+Math.sin(frame*au.speed+x*0.007+au.phase)*18);
+    ctx.lineTo(W,au.yBase+65); ctx.closePath(); ctx.fill();
+  }
+
+  // Stars
+  for (let i=0; i<160; i++) {
+    const sx=((i*199+41)*3)%W, sy=((i*113+17)*2)%(H*0.70);
+    const t=0.12+0.68*Math.abs(Math.sin(frame*0.028+i*1.9));
+    ctx.fillStyle=`rgba(255,255,255,${t.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(sx,sy,i%7===0?1.8:0.9,0,Math.PI*2); ctx.fill();
+  }
+
+  // Perspective grid
+  const gvx=W/2, gvy=348, scroll=(frame*1.5)%58;
+  ctx.lineWidth=1;
+  for (let i=-10;i<=10;i++) {
+    ctx.strokeStyle=`rgba(55,135,255,${Math.max(0,0.20-Math.abs(i)*0.018)})`;
+    ctx.beginPath(); ctx.moveTo(gvx,gvy); ctx.lineTo(gvx+i*48,H); ctx.stroke();
+  }
+  for (let j=0;j<10;j++) {
+    const raw=(j/9+scroll/522)%1; if(raw<0.04)continue;
+    const y=gvy+(H-gvy)*Math.pow(raw,1.35);
+    ctx.strokeStyle=`rgba(55,135,255,${Math.min(0.22,raw*0.28)})`;
+    ctx.beginPath(); ctx.moveTo(gvx-(W/2)*raw,y); ctx.lineTo(gvx+(W/2)*raw,y); ctx.stroke();
+  }
+
+  // Logo glow
+  const logoGrad=ctx.createRadialGradient(W/2,112,0,W/2,112,230);
+  logoGrad.addColorStop(0,'rgba(86,247,255,0.15)'); logoGrad.addColorStop(0.5,'rgba(40,80,255,0.06)'); logoGrad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=logoGrad; ctx.fillRect(W/2-290,0,580,270);
+
+  const glow=18+9*Math.sin(frame*0.045);
+  ctx.textAlign='center';
+  ctx.shadowColor='#56f7ff'; ctx.shadowBlur=glow;
+  ctx.font='bold 82px "Arial Black",Arial';
+  ctx.fillStyle='#e8faff'; ctx.fillText('SOCCAR',W/2,98);
+  ctx.strokeStyle='rgba(86,247,255,0.38)'; ctx.lineWidth=2; ctx.strokeText('SOCCAR',W/2,98);
+  ctx.shadowColor='#ff8833'; ctx.shadowBlur=glow*0.75;
+  ctx.font='bold 54px "Arial Black",Arial';
+  ctx.fillStyle='#ffaa55'; ctx.fillText('SIDESWIPES',W/2,156);
+  ctx.strokeStyle='rgba(255,120,40,0.32)'; ctx.lineWidth=1.5; ctx.strokeText('SIDESWIPES',W/2,156);
+  ctx.shadowBlur=0; ctx.shadowColor='transparent';
+
+  // ── Mini arena ──────────────────────────────────────────────────────────────
+  const mx=138, my=192, mw=524, mh=130;
+  const mFloor=my+mh-12, mCeil=my+10, mLeft=mx+16, mRight=mx+mw-16;
+
+  ctx.fillStyle='rgba(4,10,32,0.90)';
+  rrect(mx,my,mw,mh,10); ctx.fill();
+  ctx.strokeStyle='rgba(45,115,215,0.55)'; ctx.lineWidth=1.5; ctx.stroke();
+
+  // Clip arena interior so cars/ball stay inside the box
+  ctx.save();
+  ctx.beginPath(); ctx.rect(mx+2,my+2,mw-4,mh-4); ctx.clip();
+
+  ctx.lineWidth=1.2;
+  ctx.strokeStyle='rgba(45,100,180,0.65)';
+  ctx.beginPath(); ctx.moveTo(mLeft,mFloor); ctx.lineTo(mRight,mFloor); ctx.stroke();
+  ctx.strokeStyle='rgba(45,100,180,0.28)';
+  ctx.beginPath(); ctx.moveTo(mLeft,mCeil); ctx.lineTo(mRight,mCeil); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1;
+  ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(W/2,mCeil); ctx.lineTo(W/2,mFloor); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const gGap=50, gDepth=18;
+  ctx.strokeStyle='rgba(70,170,255,0.55)'; ctx.lineWidth=1.5;
+  [[mLeft,-1],[mRight,1]].forEach(([wx,side])=>{
+    const bx=wx+side*gDepth;
+    ctx.beginPath(); ctx.moveTo(wx,mFloor-gGap); ctx.lineTo(bx,mFloor-gGap);
+    ctx.lineTo(bx,mFloor); ctx.lineTo(wx,mFloor); ctx.stroke();
+  });
+
+  // ── Scripted sequence ────────────────────────────────────────────────────────
+  titleSeq++;
+  if (titleSeq >= 480) {
+    titleSeq = 0;
+    titleBall.x=400; titleBall.y=282; titleBall.vx=-1.8; titleBall.vy=-5.0; titleBall.spin=0;
+    tBlue.x=195;  tBlue.y=mFloor;  tBlue.vx=2.0;  tBlue.vy=0; tBlue.angle=0;  tBlue.facing=1;  tBlue.boosting=true;
+    tOrange.x=605; tOrange.y=mFloor; tOrange.vx=-2.0; tOrange.vy=0; tOrange.angle=0; tOrange.facing=-1; tOrange.boosting=true;
+  }
+  // Pinch setup — both cars charge center
+  if (titleSeq===80) {
+    titleBall.x=400; titleBall.y=mFloor-13; titleBall.vx=0; titleBall.vy=0; titleBall.spin=0;
+    tBlue.vx=4.2; tBlue.boosting=true; tBlue.facing=1;
+    tOrange.vx=-4.2; tOrange.boosting=true; tOrange.facing=-1;
+  }
+  // PINCH IMPACT — ball rockets up
+  if (titleSeq===120) {
+    titleBall.x=400; titleBall.y=mFloor-15; titleBall.vx=0.4; titleBall.vy=-6.2;
+    tBlue.vx=-2.5; tBlue.angle=-18; tBlue.boosting=false;
+    tOrange.vx=2.5; tOrange.angle=18; tOrange.boosting=false;
+  }
+  // Blue aerial launch
+  if (titleSeq===138) { tBlue.vy=-7.5; tBlue.vx=2.8; tBlue.boosting=true; tBlue.facing=1; }
+  // Blue aerial hit
+  if (titleSeq===175) { titleBall.vx=5.2; titleBall.vy=-3.8; tBlue.vy=1.0; tBlue.boosting=false; }
+  // Orange aerial launch
+  if (titleSeq===238) { tOrange.vy=-8.0; tOrange.vx=-2.8; tOrange.boosting=true; tOrange.facing=-1; }
+  // Orange aerial hit
+  if (titleSeq===274) { titleBall.vx=-4.8; titleBall.vy=-5.5; tOrange.vy=1.2; tOrange.boosting=false; }
+  // Drive back toward start
+  if (titleSeq===385) {
+    tBlue.vx=tBlue.x>230?-1.8:1.8; tBlue.facing=tBlue.vx>0?1:-1; tBlue.boosting=true;
+    tOrange.vx=tOrange.x<570?1.8:-1.8; tOrange.facing=tOrange.vx>0?1:-1; tOrange.boosting=true;
+  }
+
+  // Car physics
+  for (const car of [tBlue,tOrange]) {
+    car.vy+=0.22; car.x+=car.vx; car.y+=car.vy;
+    if (car.y>=mFloor) { car.y=mFloor; car.vy=0; }
+    if (car.y<=mCeil+CH+2) { car.y=mCeil+CH+2; car.vy=Math.abs(car.vy)*0.5; }
+    if (car.x-CW/2<mLeft+2) { car.x=mLeft+2+CW/2; car.vx=Math.abs(car.vx)*0.7; }
+    if (car.x+CW/2>mRight-2) { car.x=mRight-2-CW/2; car.vx=-Math.abs(car.vx)*0.7; }
+    // Angle follows velocity in air, snaps flat on ground
+    car.angle += (car.y<mFloor-1
+      ? Math.atan2(car.vy,car.vx*car.facing)*180/Math.PI - car.angle
+      : -car.angle) * 0.14;
+  }
+
+  // Ball physics
+  const bRad=9;
+  titleBall.vy+=0.20; titleBall.x+=titleBall.vx; titleBall.y+=titleBall.vy; titleBall.spin+=titleBall.vx*0.07;
+  if (titleBall.x-bRad<mLeft)  { titleBall.x=mLeft+bRad;  titleBall.vx= Math.abs(titleBall.vx)*0.84; }
+  if (titleBall.x+bRad>mRight) { titleBall.x=mRight-bRad; titleBall.vx=-Math.abs(titleBall.vx)*0.84; }
+  if (titleBall.y-bRad<mCeil)  { titleBall.y=mCeil+bRad;  titleBall.vy= Math.abs(titleBall.vy)*0.72; }
+  if (titleBall.y+bRad>mFloor) {
+    titleBall.y=mFloor-bRad; titleBall.vy=-Math.abs(titleBall.vy)*0.73;
+    if (Math.abs(titleBall.vy)<1.6) titleBall.vy=-(2.2+Math.random()*1.2);
+    titleBall.vx*=0.97;
+  }
+  const bSpd=Math.hypot(titleBall.vx,titleBall.vy);
+  if (bSpd>6.5) { titleBall.vx*=6.5/bSpd; titleBall.vy*=6.5/bSpd; }
+  if (bSpd<1.2&&titleBall.y+bRad>=mFloor-1) titleBall.vx=3.5*(Math.random()>0.5?1:-1);
+
+  // Ball-car collision
+  for (const car of [tBlue,tOrange]) {
+    const cx=car.x, cy=car.y-CH/2;
+    const dx=titleBall.x-cx, dy=titleBall.y-cy;
+    const d=Math.hypot(dx,dy), minD=bRad+15;
+    if (d<minD && d>0.01) {
+      const nx=dx/d, ny=dy/d, pen=minD-d;
+      titleBall.x+=nx*pen*0.6; titleBall.y+=ny*pen*0.6;
+      car.x-=nx*pen*0.4;
+      const dot=(titleBall.vx-car.vx)*nx+(titleBall.vy-car.vy)*ny;
+      if (dot<0) {
+        const imp=dot*1.55;
+        titleBall.vx-=imp*nx; titleBall.vy-=imp*ny;
+        car.vx+=imp*nx*0.32; car.vy+=imp*ny*0.32;
+      }
+    }
+  }
+  // Car-car collision
+  {
+    const dx=tBlue.x-tOrange.x, dy=(tBlue.y-CH/2)-(tOrange.y-CH/2);
+    const d=Math.hypot(dx,dy), minD=CW+4;
+    if (d<minD && d>0.01) {
+      const nx=dx/d, ny=dy/d, pen=minD-d;
+      tBlue.x+=nx*pen*0.5; tOrange.x-=nx*pen*0.5;
+      const dot=(tBlue.vx-tOrange.vx)*nx+(tBlue.vy-tOrange.vy)*ny;
+      if (dot<0) {
+        tBlue.vx-=dot*nx*0.85; tBlue.vy-=dot*ny*0.85;
+        tOrange.vx+=dot*nx*0.85; tOrange.vy+=dot*ny*0.85;
+      }
+    }
+  }
+  // Re-clamp after collisions
+  for (const car of [tBlue,tOrange]) {
+    if (car.y>mFloor) { car.y=mFloor; car.vy=0; }
+  }
+  if (titleBall.y+bRad>mFloor) { titleBall.y=mFloor-bRad; titleBall.vy=-Math.abs(titleBall.vy)*0.73; }
+
+  // Draw ball (behind cars)
+  ctx.beginPath(); ctx.arc(titleBall.x,titleBall.y,bRad,0,Math.PI*2);
+  ctx.fillStyle='#ffffff'; ctx.fill();
+  ctx.strokeStyle='#cccccc'; ctx.lineWidth=0.6; ctx.stroke();
+  ctx.save();
+  ctx.translate(titleBall.x,titleBall.y); ctx.rotate(titleBall.spin);
+  ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.moveTo(-bRad*0.82,0); ctx.lineTo(bRad*0.82,0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,-bRad*0.82); ctx.lineTo(0,bRad*0.82); ctx.stroke();
+  ctx.restore();
+
+  // Draw cars (proper Fennec shapes)
+  drawMiniCar(tBlue.x,  tBlue.y,  tBlue.angle,  tBlue.facing,  true,  tBlue.boosting);
+  drawMiniCar(tOrange.x,tOrange.y,tOrange.angle,tOrange.facing,false,tOrange.boosting);
+
+  ctx.restore(); // remove clip
+
+  // Redraw arena border on top of cars
+  ctx.strokeStyle='rgba(45,115,215,0.55)'; ctx.lineWidth=1.5;
+  rrect(mx,my,mw,mh,10); ctx.stroke();
+
+  // "PRESS ANY KEY TO START" blinking
+  if (Math.floor(frame/22)%2===0) {
+    ctx.font='bold 23px "Arial Black",Arial'; ctx.textAlign='center';
+    ctx.shadowColor='#56f7ff'; ctx.shadowBlur=20;
+    ctx.fillStyle='#ffffff'; ctx.fillText('PRESS ANY KEY TO START',W/2,374);
+    ctx.shadowBlur=0; ctx.shadowColor='transparent';
+  }
+
+  // Credit
+  ctx.font='11px Arial'; ctx.fillStyle='rgba(85,108,140,0.62)';
+  ctx.fillText('CREATED BY LEVI V',W/2,H-11);
+
+  ctx.restore();
 }
 
 // ─── menu ─────────────────────────────────────────────────────────────────────
@@ -1489,7 +1833,7 @@ function drawSettings() {
   ctx.font = 'bold 15px "Arial Black",Arial';
   ctx.fillStyle = '#556688'; ctx.fillText('SETTINGS', W/2, 138);
 
-  const rowH = 54, startY = 168;
+  const rowH = 46, startY = 150;
   for (let i = 0; i < SDEFS.length; i++) {
     const sd = SDEFS[i];
     const y = startY + i * rowH;
@@ -1877,6 +2221,7 @@ function update() {
     if (shake > 0) shake *= 0.8;
 
     // Timer countdown (only in Game mode with a time limit)
+    if (SDEFS[1].cur === 0 && SDEFS[2].cur === 7) playTime++;
     if (SDEFS[1].cur === 0 && gameTimer > 0) {
       gameTimer--;
       if (gameTimer <= 0) {
@@ -2022,6 +2367,7 @@ function render() {
     return;
   }
 
+  if (state === S.TITLE)    { drawTitle(); return; }
   if (state === S.SETTINGS) { drawSettings(); drawHUD(); return; }
   if (state === S.WIN)      { drawWin(); return; }
   if (state === S.MENU) { drawMenu(); drawHUD(); return; }
