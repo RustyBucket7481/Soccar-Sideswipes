@@ -69,13 +69,14 @@ let kickoffTimer = 0;
 const SDEFS = [
   { label:'GRAVITY', vals:['Very Low','Low','Normal','High','Very High'], cur:2 },
   { label:'MODE',    vals:['Game','Free Play'],                           cur:0 },
-  { label:'TIMER',   vals:['1 Min','2 Min','3 Min','5 Min','First to 3','First to 5','Unlimited'], cur:2 },
+  { label:'TIMER',   vals:['1 Min','2 Min','3 Min','5 Min','First to 3','First to 5','First to 10','Unlimited'], cur:2 },
   { label:'DEMOS',   vals:['None','Normal','On Contact'],                 cur:0 },
+  { label:'BOOST',   vals:['Limited','Unlimited'],                        cur:0 },
 ];
 let settingSel = 0;
 const GRAVITY_VALS = [0.045, 0.10, 0.175, 0.27, 0.38];
 const BGRAV_VALS   = [0.012, 0.035, 0.07, 0.11, 0.16];
-const TIMER_FRAMES = [3600, 7200, 10800, 18000, -1, -1, -1];
+const TIMER_FRAMES = [3600, 7200, 10800, 18000, -1, -1, -1, -1];
 let gameTimer = 0;  // counts down in frames; -1 = score-based or unlimited
 let winner    = '';
 let bScore = 0, oScore = 0;
@@ -370,14 +371,15 @@ function updateCar(c, lk, rk, jk, bk) {
     if (keys[lk]) c.angV -= 0.25 * c.facing;
     if (keys[rk]) c.angV += 0.25 * c.facing;
   }
-  c.boosting = !!(keys[bk]) && c.boost > 0;
+  const unlimitedBoost = SDEFS[4].cur === 1;
+  c.boosting = !!(keys[bk]) && (unlimitedBoost || c.boost > 0);
   if (c.boosting) {
     c.vx += c.facing * BOOST_F * Math.cos(vr);
     c.vy +=            BOOST_F * Math.sin(vr);
-    c.boost = Math.max(0, c.boost - 1);
+    if (!unlimitedBoost) c.boost = Math.max(0, c.boost - 1);
   }
-  // Boost slowly refills on the ground (like collecting small pads in RL Sideswipe)
-  if (c.ground && state === S.PLAY) c.boost = Math.min(BOOST_MAX, c.boost + 0.35);
+  if (unlimitedBoost) { c.boost = BOOST_MAX; }
+  else if (c.ground && state === S.PLAY) c.boost = Math.min(BOOST_MAX, c.boost + 0.35);
 
   if (keys[jk]) {
     if (!c.jumpPressed && c.jumps < 2) {
@@ -516,10 +518,12 @@ function score(team) {
   goalExplosion = team === 'blue' ? bExplosion : oExplosion;
 
   // First-to-X win check
-  const firstTo3 = SDEFS[2].cur === 4;
-  const firstTo5 = SDEFS[2].cur === 5;
-  if (firstTo3 && (bScore >= 3 || oScore >= 3)) winner = bScore >= 3 ? 'blue' : 'orange';
-  if (firstTo5 && (bScore >= 5 || oScore >= 5)) winner = bScore >= 5 ? 'blue' : 'orange';
+  const firstTo3  = SDEFS[2].cur === 4;
+  const firstTo5  = SDEFS[2].cur === 5;
+  const firstTo10 = SDEFS[2].cur === 6;
+  if (firstTo3  && (bScore >= 3  || oScore >= 3))  winner = bScore >= 3  ? 'blue' : 'orange';
+  if (firstTo5  && (bScore >= 5  || oScore >= 5))  winner = bScore >= 5  ? 'blue' : 'orange';
+  if (firstTo10 && (bScore >= 10 || oScore >= 10)) winner = bScore >= 10 ? 'blue' : 'orange';
 
   state     = S.GOAL;
   goalTimer = 360;
@@ -1307,8 +1311,9 @@ function drawScoreboard() {
     ctx.font = 'bold 13px "Arial Black",Arial';
     ctx.fillStyle = secs <= 10 ? '#ff4444' : '#8888bb';
     ctx.fillText(timeStr, W/2, SB - 6);
-  } else if (SDEFS[2].cur === 4 || SDEFS[2].cur === 5) {
-    const target = SDEFS[2].cur === 4 ? 3 : 5;
+  } else if (SDEFS[2].cur >= 4 && SDEFS[2].cur <= 6) {
+    const targets = [3, 5, 10];
+    const target = targets[SDEFS[2].cur - 4];
     ctx.font = '10px Arial'; ctx.fillStyle = '#445566';
     ctx.fillText('FIRST TO ' + target, W/2, SB - 6);
   }
