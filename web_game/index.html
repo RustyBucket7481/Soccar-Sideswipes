@@ -250,10 +250,11 @@ function onMenuKey(k) {
     if (k === 'ArrowDown')  settingSel = (settingSel + 1) % SDEFS.length;
     if (k === 'ArrowLeft')  { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length; if (settingSel===1 && sd.cur===1) { SDEFS[2].cur=7; SDEFS[4].cur=1; } }
     if (k === 'ArrowRight') { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + 1) % sd.vals.length;                   if (settingSel===1 && sd.cur===1) { SDEFS[2].cur=7; SDEFS[4].cur=1; } }
-    if (k === 'Enter' || k === 'Escape') {
+    if (k === 'Enter') {
       if (settingsReturn === S.PAUSE) { applySettings(); state = S.PAUSE; }
       else { state = S.MENU; }
     }
+    if (k === 'Escape' && settingsReturn === S.PAUSE) { applySettings(); state = S.PAUSE; }
     return;
   }
   if (state === S.WIN) {
