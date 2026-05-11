@@ -47,9 +47,9 @@ const CW = 32;
 const CH = 17;
 
 // ─── physics (Scratch 30fps -> 60fps with A_SCALE=1.38 px/unit) ───────────────────
-const GRAV      = 0.175;  // terminal fall = 6.9 px/frame
+let   GRAV      = 0.175;  // terminal fall = 6.9 px/frame; overridden by settings
 const FRIC      = 0.9747; // sqrt(0.95): matches Scratch real-time decay
-const B_GRAV    = 0.07;
+let   B_GRAV    = 0.07;
 const B_BOUNCE  = 0.70;
 const B_FRIC    = 0.997;
 const C_BOUNCE  = 0.45;
@@ -60,10 +60,24 @@ const MAX_SPD   = 20;
 const BOOST_MAX = 100;
 
 // ─── state ────────────────────────────────────────────────────────────────────
-const S = { MENU:0, PLAY:1, GOAL:2, EXPL:3, PAUSE:4, KICKOFF:5 };
-let state = S.MENU;
+const S = { MENU:0, PLAY:1, GOAL:2, EXPL:3, PAUSE:4, KICKOFF:5, SETTINGS:6, WIN:7 };
+let state = S.SETTINGS;
 let pauseSel = 0;
 let kickoffTimer = 0;
+
+// ─── settings ─────────────────────────────────────────────────────────────────
+const SDEFS = [
+  { label:'GRAVITY', vals:['Very Low','Low','Normal','High','Very High'], cur:2 },
+  { label:'MODE',    vals:['Game','Free Play'],                           cur:0 },
+  { label:'TIMER',   vals:['1 Min','2 Min','3 Min','5 Min','First to 3','First to 5','Unlimited'], cur:2 },
+  { label:'DEMOS',   vals:['None','Normal','On Contact'],                 cur:0 },
+];
+let settingSel = 0;
+const GRAVITY_VALS = [0.045, 0.10, 0.175, 0.27, 0.38];
+const BGRAV_VALS   = [0.012, 0.035, 0.07, 0.11, 0.16];
+const TIMER_FRAMES = [3600, 7200, 10800, 18000, -1, -1, -1];
+let gameTimer = 0;  // counts down in frames; -1 = score-based or unlimited
+let winner    = '';
 let bScore = 0, oScore = 0;
 let bCar = 0, oCar = 0;      // 0=Fennec  1=Dominus  2=Merc
 let goalTimer = 0, goalTeam = '', goalKph = 0;
@@ -152,14 +166,37 @@ canvas.addEventListener('mousemove', e => {
   const inExplEnter = mouse.x >= W/2-115 && mouse.x <= W/2+115 && mouse.y >= H-70 && mouse.y <= H-26;
   const inPauseBtn = state === S.PAUSE && mouse.x >= W/2-120 && mouse.x <= W/2+120 &&
     ((mouse.y >= poy+75 && mouse.y <= poy+111) || (mouse.y >= poy+130 && mouse.y <= poy+166));
+  const inSettingsEnter = state === S.SETTINGS && mouse.x >= W/2-120 && mouse.x <= W/2+120 && mouse.y >= H-78 && mouse.y <= H-34;
+  const inWinEnter = state === S.WIN && mouse.x >= W/2-140 && mouse.x <= W/2+140 && mouse.y >= 340 && mouse.y <= 390;
   canvas.style.cursor = (state === S.MENU && (inCarRow || inCarEnter)) ||
-    (state === S.EXPL && (inExplRow || inExplEnter)) || inPauseBtn ? 'pointer' : 'default';
+    (state === S.EXPL && (inExplRow || inExplEnter)) || inPauseBtn || inSettingsEnter || inWinEnter ? 'pointer' : 'default';
 });
 canvas.addEventListener('click', e => {
   const r = canvas.getBoundingClientRect();
   const scaleX = W / r.width, scaleY = H / r.height;
   const cx = (e.clientX - r.left) * scaleX;
   const cy = (e.clientY - r.top)  * scaleY;
+  if (state === S.SETTINGS) {
+    const rowH = 54, startY = 168;
+    for (let i = 0; i < SDEFS.length; i++) {
+      const y = startY + i * rowH;
+      if (cy >= y - 22 && cy <= y + 24) {
+        settingSel = i;
+        const sd = SDEFS[i];
+        if (cx >= W/2 + 20 && cx < W/2 + 100) sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length;
+        else if (cx >= W/2 + 200) sd.cur = (sd.cur + 1) % sd.vals.length;
+        else if (cx > W/2 + 100) sd.cur = (sd.cur + 1) % sd.vals.length;
+      }
+    }
+    if (cx >= W/2 - 120 && cx <= W/2 + 120 && cy >= H - 78 && cy <= H - 34) state = S.MENU;
+    return;
+  }
+  if (state === S.WIN) {
+    if (cx >= W/2 - 140 && cx <= W/2 + 140 && cy >= 340 && cy <= 390) {
+      winner = ''; bScore = 0; oScore = 0; state = S.SETTINGS;
+    }
+    return;
+  }
   if (state === S.MENU) {
     const rowY = [232, 290, 348];
     for (let i = 0; i < 3; i++) {
@@ -183,7 +220,7 @@ canvas.addEventListener('click', e => {
     const ph = 200, poy = H/2 - ph/2;
     if (cx >= W/2-120 && cx <= W/2+120) {
       if (cy >= poy+75 && cy <= poy+111) { state = S.PLAY; }
-      if (cy >= poy+130 && cy <= poy+166) { bScore=0; oScore=0; state=S.MENU; particles.length=0; }
+      if (cy >= poy+130 && cy <= poy+166) { winner=''; bScore=0; oScore=0; state=S.SETTINGS; particles.length=0; }
     }
   }
 });
@@ -200,6 +237,18 @@ document.addEventListener('keyup', e => {
 });
 
 function onMenuKey(k) {
+  if (state === S.SETTINGS) {
+    if (k === 'ArrowUp')    settingSel = (settingSel + SDEFS.length - 1) % SDEFS.length;
+    if (k === 'ArrowDown')  settingSel = (settingSel + 1) % SDEFS.length;
+    if (k === 'ArrowLeft')  { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + sd.vals.length - 1) % sd.vals.length; }
+    if (k === 'ArrowRight') { const sd = SDEFS[settingSel]; sd.cur = (sd.cur + 1) % sd.vals.length; }
+    if (k === 'Enter')      state = S.MENU;
+    return;
+  }
+  if (state === S.WIN) {
+    if (k === 'Enter') { winner = ''; bScore = 0; oScore = 0; state = S.SETTINGS; }
+    return;
+  }
   if (state === S.MENU) {
     if (k==='1') bCar=0; if (k==='2') bCar=1; if (k==='3') bCar=2;
     if (k==='7') oCar=0; if (k==='8') oCar=1; if (k==='9') oCar=2;
@@ -218,12 +267,12 @@ function onMenuKey(k) {
     if (k==='Escape') state = S.MENU;
     if (k==='Enter') startGame();
   } else if (state === S.GOAL && k==='Enter') {
-    state = S.PLAY; spawnObjects();
+    spawnObjects();
   } else if ((state === S.PLAY || state === S.GOAL) && k === 'Escape') {
     state = S.PAUSE; pauseSel = 0;
   } else if (state === S.PAUSE) {
     if (k === 'Escape' || (k === 'Enter' && pauseSel === 0)) { state = S.PLAY; }
-    else if (k === 'Enter' && pauseSel === 1) { bScore=0; oScore=0; state=S.MENU; particles.length=0; }
+    else if (k === 'Enter' && pauseSel === 1) { winner=''; bScore=0; oScore=0; state=S.SETTINGS; particles.length=0; }
     else if (k === 'ArrowUp') pauseSel = 0;
     else if (k === 'ArrowDown') pauseSel = 1;
   }
@@ -259,7 +308,7 @@ function makeCar(x, team) {
   return { x, y:FLOOR, vx:0, vy:0, ground:false, jumps:0,
            boost:BOOST_MAX, facing:f, naturalFacing:f, team,
            jumpPressed:false, angle:0, angV:0, boosting:false,
-           visualFlipped:false };
+           visualFlipped:false, demoTimer:0 };
 }
 
 function spawnObjects() {
@@ -269,17 +318,48 @@ function spawnObjects() {
   particles.length = 0;
   flashAlpha = 0;
   shake = 0;
-  state  = S.KICKOFF;
-  kickoffTimer = 150;
+  if (winner !== '') {
+    state = S.WIN;
+  } else {
+    state  = S.KICKOFF;
+    kickoffTimer = 150;
+  }
+}
+
+function applySettings() {
+  GRAV   = GRAVITY_VALS[SDEFS[0].cur];
+  B_GRAV = BGRAV_VALS[SDEFS[0].cur];
+  const tf = TIMER_FRAMES[SDEFS[2].cur];
+  gameTimer = tf;
 }
 
 function startGame() {
-  bScore = 0; oScore = 0;
+  bScore = 0; oScore = 0; winner = '';
+  applySettings();
   spawnObjects();
 }
 
 // ─── physics ──────────────────────────────────────────────────────────────────
+function demoCar(c) {
+  if (c.demoTimer > 0) return;
+  c.demoTimer = 180;
+  c.vx = c.vy = c.angV = 0;
+  const col = c.team === 'blue' ? '#4488ff' : '#ff7733';
+  emitParticles(c.x, c.y, 25, col, 10, 4);
+  emitParticles(c.x, c.y, 15, '#ffffff', 8, 2);
+  shake = Math.max(shake, 4);
+}
+
 function updateCar(c, lk, rk, jk, bk) {
+  if (c.demoTimer > 0) {
+    c.demoTimer--;
+    if (c.demoTimer <= 0) {
+      c.x = c.team === 'blue' ? WL + (WR-WL)*0.18 : WL + (WR-WL)*0.82;
+      c.y = FLOOR; c.vx = 0; c.vy = 0; c.angV = 0; c.angle = 0;
+      c.boost = BOOST_MAX; c.jumps = 0; c.ground = true; c.facing = c.naturalFacing;
+    }
+    return;
+  }
   const vr = c.angle * Math.PI / 180;
 
   if (c.ground) {
@@ -290,43 +370,30 @@ function updateCar(c, lk, rk, jk, bk) {
     if (keys[lk]) c.angV -= 0.25 * c.facing;
     if (keys[rk]) c.angV += 0.25 * c.facing;
   }
-  c.boosting = !!(keys[bk]);
+  c.boosting = !!(keys[bk]) && c.boost > 0;
   if (c.boosting) {
     c.vx += c.facing * BOOST_F * Math.cos(vr);
     c.vy +=            BOOST_F * Math.sin(vr);
+    c.boost = Math.max(0, c.boost - 1);
   }
+  // Boost slowly refills on the ground (like collecting small pads in RL Sideswipe)
+  if (c.ground && state === S.PLAY) c.boost = Math.min(BOOST_MAX, c.boost + 0.35);
 
   if (keys[jk]) {
     if (!c.jumpPressed && c.jumps < 2) {
       if (c.jumps === 0) {
         c.vy -= JUMP_F;                           // first jump: always straight up
       } else {
-        // Second jump. Forward = same direction as facing.
+        // Second jump.
         const isFwd = (keys[rk] && c.facing === 1) || (keys[lk] && c.facing === -1);
         if (isFwd) {
-          // Check if ball is sitting on the car roof (dribbling).
-          const roofY = c.y - CH;
-          const isDribbling = ball.y >= roofY - BALL_R * 1.4 &&
-                              ball.y <= roofY + BALL_R * 0.5 &&
-                              Math.abs(ball.x - c.x) < CW * 0.6;
-          if (isDribbling) {
-            // Front flip flick: directly kick the ball forward off the roof.
-            ball.vx += c.facing * 7;
-            ball.vy -= 2.5;
-            // Car gets forward momentum and a strong flip rotation.
-            c.vx += c.facing * 3.5;
-            c.vy -= 3.5;
-            c.angV += 12;
-            emitParticles(ball.x, ball.y, 14, c.team === 'blue' ? '#88ccff' : '#ffcc66', 10, 3);
-            shake = Math.max(shake, 3);
-          } else {
-            // Forward flip, no ball — regular launch with flip spin.
-            c.vx += c.facing * JUMP_F * Math.sin(vr);
-            c.vy -= JUMP_F * Math.cos(vr);
-            c.angV += 11;
-          }
+          // Front flip: forward momentum keeps the car near the ball while rotating
+          // so the tangential surface velocity in carBallCollide creates the flick naturally.
+          c.vx += c.facing * JUMP_F * 0.75;
+          c.vy -= JUMP_F * 0.5;
+          c.angV += 11;
         } else {
-          // Musty flick or back flip — launch away from wheels.
+          // Back flip / musty.
           c.vx += c.facing * JUMP_F * Math.sin(vr);
           c.vy -= JUMP_F * Math.cos(vr);
           if (keys[lk] || keys[rk]) {
@@ -355,8 +422,15 @@ function updateCar(c, lk, rk, jk, bk) {
 
   if (c.y >= FLOOR)     { c.y = FLOOR;     c.vy = 0; c.ground = true; c.jumps = 0; }
   if (c.y - CH <= CEIL) { c.y = CEIL + CH; c.vy = Math.abs(c.vy) * C_BOUNCE; }
-  if (c.x - CW/2 < WL) { c.x = WL+CW/2;  c.vx =  Math.abs(c.vx) * C_BOUNCE; }
-  if (c.x + CW/2 > WR) { c.x = WR-CW/2;  c.vx = -Math.abs(c.vx) * C_BOUNCE; }
+  const inGoalGap = c.y > GT_TOP + 4 && c.y - CH < GT_BOT - 4;
+  if (c.x - CW/2 < WL) {
+    if (inGoalGap) { if (c.x - CW/2 < CLIP_L) { c.x = CLIP_L+CW/2; c.vx =  Math.abs(c.vx)*C_BOUNCE; } }
+    else { c.x = WL+CW/2; c.vx = Math.abs(c.vx)*C_BOUNCE; }
+  }
+  if (c.x + CW/2 > WR) {
+    if (inGoalGap) { if (c.x + CW/2 > CLIP_R) { c.x = CLIP_R-CW/2; c.vx = -Math.abs(c.vx)*C_BOUNCE; } }
+    else { c.x = WR-CW/2; c.vx = -Math.abs(c.vx)*C_BOUNCE; }
+  }
 
   // Standing on the other car: treat as grounded, driving pushes the bottom car.
   if (!c.ground) {
@@ -430,11 +504,23 @@ function updateBall() {
 }
 
 function score(team) {
+  if (state !== S.PLAY) return;
+  if (SDEFS[1].cur === 1) {
+    // Free Play — no scoring
+    spawnObjects(); return;
+  }
   if (team === 'blue') bScore++; else oScore++;
   goalTeam  = team;
   goalKph   = Math.round(Math.hypot(ball.vx, ball.vy) * 4.5);
   goalExplX = ball.x; goalExplY = ball.y;
   goalExplosion = team === 'blue' ? bExplosion : oExplosion;
+
+  // First-to-X win check
+  const firstTo3 = SDEFS[2].cur === 4;
+  const firstTo5 = SDEFS[2].cur === 5;
+  if (firstTo3 && (bScore >= 3 || oScore >= 3)) winner = bScore >= 3 ? 'blue' : 'orange';
+  if (firstTo5 && (bScore >= 5 || oScore >= 5)) winner = bScore >= 5 ? 'blue' : 'orange';
+
   state     = S.GOAL;
   goalTimer = 360;
   shake = 4;
@@ -566,6 +652,7 @@ function triggerGoalExplosion(team) {
 }
 
 function carBallCollide(c) {
+  if (c.demoTimer > 0) return;
   const left = c.x - CW/2, right = c.x + CW/2;
   const top  = c.y - CH,   bot   = c.y;
   const cpx  = Math.max(left, Math.min(right, ball.x));
@@ -631,12 +718,13 @@ function carBallCollide(c) {
   const surfT = surfVx * tx + surfVy * ty;
   if (Math.abs(surfT) > 0.3) {
     const flickDir = c.visualFlipped ? -1 : 1;
-    ball.vx += tx * surfT * flickDir * 3.0;
-    ball.vy += ty * surfT * flickDir * 3.0;
+    ball.vx += tx * surfT * flickDir * 0.75;
+    ball.vy += ty * surfT * flickDir * 0.75;
   }
 }
 
 function carCarCollide() {
+  if (blue.demoTimer > 0 || orange.demoTimer > 0) return;
   const al = blue.x - CW/2, ar = blue.x + CW/2, at = blue.y - CH, ab = blue.y;
   const ol = orange.x - CW/2, or2 = orange.x + CW/2, ot = orange.y - CH, ob = orange.y;
   if (ar <= ol || al >= or2 || ab <= ot || at >= ob) return;
@@ -649,12 +737,13 @@ function carCarCollide() {
   // when both cars are on the ground their vertical overlap always equals CH,
   // so always resolve horizontally in that case to prevent pass-through
   const resolveH = (blue.ground && orange.ground) || overlapX <= overlapY;
+  const relSpd = Math.hypot(blue.vx - orange.vx, blue.vy - orange.vy);
   if (resolveH) {
     blue.x   += signX * overlapX / 2;
     orange.x -= signX * overlapX / 2;
     const relVx = (blue.vx - orange.vx) * signX;
     if (relVx < 0) {
-      const imp = -relVx * 0.9; // CoR ≈ 0.8, equal-mass elastic: full impulse each
+      const imp = -relVx * 0.9;
       blue.vx   += signX * imp;
       orange.vx -= signX * imp;
     }
@@ -667,6 +756,17 @@ function carCarCollide() {
       blue.vy   += signY * imp;
       orange.vy -= signY * imp;
     }
+  }
+
+  // Demo check
+  if (SDEFS[3].cur === 2) {
+    // On Contact: demo the slower / less boosting car
+    const hitCar = Math.abs(blue.vx) + Math.abs(blue.vy) < Math.abs(orange.vx) + Math.abs(orange.vy) ? blue : orange;
+    demoCar(hitCar);
+  } else if (SDEFS[3].cur === 1 && relSpd > 12) {
+    // Normal: demo on high-speed impact
+    const hitCar = (Math.abs(blue.vx)+Math.abs(blue.vy)) < (Math.abs(orange.vx)+Math.abs(orange.vy)) ? blue : orange;
+    demoCar(hitCar);
   }
 }
 
@@ -853,19 +953,32 @@ function drawCarShadow(c) {
 }
 
 function drawCar(c) {
+  if (c.demoTimer > 0) {
+    // Show respawn countdown ring
+    const frac = c.demoTimer / 180;
+    const spawnX = c.team === 'blue' ? WL + (WR-WL)*0.18 : WL + (WR-WL)*0.82;
+    const col = c.team === 'blue' ? '#4488ff' : '#ff7733';
+    ctx.save();
+    ctx.globalAlpha = 0.5 * (1 - frac);
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(spawnX, FLOOR - 10, 18 * (1 - frac) + 4, 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    return;
+  }
   let a = ((c.angle % 360) + 360) % 360;
   if (a > 180) a -= 360;
 
   // Barrel roll: car always looks right-side up. Track which side we're on.
   const wasFlipped = c.visualFlipped;
-  c.visualFlipped = Math.abs(a) > 90;
+  c.visualFlipped = Math.abs(a) > 130;
   const justFlipped = wasFlipped !== c.visualFlipped;
 
   let drawAngle, drawFacing;
   if (justFlipped) {
-    // Crossed 90° this frame — hold exactly vertical for one frame so the
-    // facing-direction change happens at the symmetric pose (invisible snap).
-    drawAngle = Math.sign(a) * 90;
+    // Crossed 130° this frame — hold at 130° for one frame so the
+    // facing-direction change happens when car is already near-horizontal (less visible).
+    drawAngle = Math.sign(a) * 130;
     drawFacing = c.visualFlipped ? -c.facing : c.facing;
   } else if (c.visualFlipped) {
     drawAngle = a > 0 ? 180 - a : -180 - a;
@@ -1185,6 +1298,21 @@ function drawScoreboard() {
   drawScore(W/2 - 16, 7, bScore, 1.3, '#4499ff', '#08122a', false);
   drawScore(W/2 + 16, 7, oScore, 1.3, '#ff8833', '#200a00', true);
 
+  // Timer display
+  ctx.textAlign = 'center';
+  if (gameTimer > 0) {
+    const secs = Math.ceil(gameTimer / 60);
+    const mm = Math.floor(secs / 60), ss = secs % 60;
+    const timeStr = mm + ':' + ss.toString().padStart(2,'0');
+    ctx.font = 'bold 13px "Arial Black",Arial';
+    ctx.fillStyle = secs <= 10 ? '#ff4444' : '#8888bb';
+    ctx.fillText(timeStr, W/2, SB - 6);
+  } else if (SDEFS[2].cur === 4 || SDEFS[2].cur === 5) {
+    const target = SDEFS[2].cur === 4 ? 3 : 5;
+    ctx.font = '10px Arial'; ctx.fillStyle = '#445566';
+    ctx.fillText('FIRST TO ' + target, W/2, SB - 6);
+  }
+
   boostBar(53,    SB-12, blue,   '#4488ff');
   boostBar(W-113, SB-12, orange, '#ff7733');
 }
@@ -1245,6 +1373,106 @@ function drawMenu() {
   ctx.font = 'bold 17px "Arial Black",Arial'; ctx.textAlign = 'center';
   ctx.fillText('ENTER → Next', W/2, 402);
 
+  ctx.restore();
+}
+
+function drawSettings() {
+  ctx.save();
+  ctx.fillStyle = '#07071a'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 120; i++) {
+    const sx = (i*173) % W, sy = (i*97) % (H*0.62);
+    ctx.fillStyle = `rgba(255,255,255,${0.25+0.25*Math.sin(frame*0.04+i*1.3)})`;
+    ctx.fillRect(sx, sy, 1, 1);
+  }
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 38px "Arial Black",Arial';
+  ctx.fillStyle = '#ffffff'; ctx.fillText('SOCCAR', W/2, 60);
+  ctx.fillStyle = '#56f7ff'; ctx.fillText('SIDESWIPES', W/2, 104);
+
+  ctx.font = 'bold 15px "Arial Black",Arial';
+  ctx.fillStyle = '#556688'; ctx.fillText('SETTINGS', W/2, 138);
+
+  const rowH = 54, startY = 168;
+  for (let i = 0; i < SDEFS.length; i++) {
+    const sd = SDEFS[i];
+    const y = startY + i * rowH;
+    const sel = i === settingSel;
+
+    ctx.fillStyle = sel ? 'rgba(80,120,220,0.22)' : 'rgba(255,255,255,0.04)';
+    rrect(W/2 - 285, y - 22, 570, 46, 7); ctx.fill();
+    if (sel) { ctx.strokeStyle = 'rgba(100,160,255,0.65)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+
+    ctx.textAlign = 'left';
+    ctx.font = sel ? 'bold 15px "Arial Black",Arial' : 'bold 14px Arial';
+    ctx.fillStyle = sel ? '#ffffff' : '#778899';
+    ctx.fillText(sd.label, W/2 - 268, y + 6);
+
+    const arrowCol = sel ? '#56f7ff' : '#334466';
+    ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center';
+    ctx.fillStyle = arrowCol; ctx.fillText('◄', W/2 + 55, y + 7);
+    ctx.fillStyle = arrowCol; ctx.fillText('►', W/2 + 255, y + 7);
+
+    ctx.font = sel ? 'bold 15px "Arial Black",Arial' : '14px Arial';
+    ctx.fillStyle = sel ? '#56f7ff' : '#556688';
+    ctx.fillText(sd.vals[sd.cur], W/2 + 155, y + 7);
+  }
+
+  const pulse = 0.65 + 0.35*Math.sin(frame*0.07);
+  ctx.fillStyle = `rgba(26,64,26,${0.7+0.3*pulse})`;
+  rrect(W/2-120, H-78, 240, 44, 8); ctx.fill();
+  ctx.strokeStyle = `rgba(68,204,68,${pulse})`; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = `rgba(136,255,136,${0.7+0.3*pulse})`;
+  ctx.font = 'bold 16px "Arial Black",Arial'; ctx.textAlign = 'center';
+  ctx.fillText('ENTER → Choose Cars', W/2, H - 48);
+
+  ctx.font = '11px Arial'; ctx.fillStyle = '#445566';
+  ctx.fillText('↑ ↓  select   ◄ ►  change', W/2, H - 18);
+  ctx.restore();
+}
+
+function drawWin() {
+  ctx.save();
+  ctx.fillStyle = '#07071a'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 120; i++) {
+    const sx = (i*173) % W, sy = (i*97) % (H*0.62);
+    ctx.fillStyle = `rgba(255,255,255,${0.25+0.25*Math.sin(frame*0.04+i*1.3)})`;
+    ctx.fillRect(sx, sy, 1, 1);
+  }
+  const isBlue = winner === 'blue';
+  const col    = isBlue ? '#4488ff' : '#ff7733';
+  const col2   = isBlue ? '#88ccff' : '#ffcc88';
+  const name   = isBlue ? 'BLUE' : 'ORANGE';
+
+  ctx.save();
+  ctx.globalAlpha = 0.12 + 0.06*Math.sin(frame*0.05);
+  const grd = ctx.createRadialGradient(W/2, H*0.42, 10, W/2, H*0.42, 260);
+  grd.addColorStop(0, col); grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 18px Arial'; ctx.fillStyle = '#888899';
+  ctx.fillText('WINNER', W/2, 158);
+
+  ctx.font = 'bold 78px "Arial Black",Arial';
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 36;
+  ctx.fillText(name, W/2, 248);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 30px Arial'; ctx.fillStyle = '#ffffff';
+  ctx.fillText(bScore + '  —  ' + oScore, W/2, 298);
+
+  const pulse = 0.65 + 0.35*Math.sin(frame*0.07);
+  ctx.fillStyle = `rgba(26,64,26,${0.7+0.3*pulse})`;
+  rrect(W/2-140, 340, 280, 50, 8); ctx.fill();
+  ctx.strokeStyle = `rgba(68,204,68,${pulse})`; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = `rgba(136,255,136,${0.7+0.3*pulse})`;
+  ctx.font = 'bold 17px "Arial Black",Arial';
+  ctx.fillText('ENTER → Play Again', W/2, 372);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '12px Arial'; ctx.fillStyle = '#445566';
+  ctx.fillText('Returns to settings', W/2, 408);
   ctx.restore();
 }
 
@@ -1547,6 +1775,20 @@ function update() {
     carBallCollide(orange);
     carCarCollide();
     if (shake > 0) shake *= 0.8;
+
+    // Timer countdown (only in Game mode with a time limit)
+    if (SDEFS[1].cur === 0 && gameTimer > 0) {
+      gameTimer--;
+      if (gameTimer <= 0) {
+        if (bScore !== oScore) {
+          winner = bScore > oScore ? 'blue' : 'orange';
+          state = S.WIN;
+        } else {
+          // Overtime: 60-second sudden death
+          gameTimer = 3600;
+        }
+      }
+    }
   }
   if (state === S.GOAL) {
     goalTimer--;
@@ -1680,6 +1922,8 @@ function render() {
     return;
   }
 
+  if (state === S.SETTINGS) { drawSettings(); drawHUD(); return; }
+  if (state === S.WIN)      { drawWin(); return; }
   if (state === S.MENU) { drawMenu(); drawHUD(); return; }
   if (state === S.EXPL) { drawExplosionMenu(); drawHUD(); return; }
 
@@ -1709,12 +1953,20 @@ function render() {
   if (state === S.PAUSE) drawPause();
 }
 
-(function loop() {
-  frame++;
-  update();
-  render();
+let _lastTime = 0, _accum = 0;
+const _STEP = 1000 / 60;
+(function loop(ts) {
   requestAnimationFrame(loop);
-})();
+  const dt = Math.min(ts - _lastTime, 100);
+  _lastTime = ts;
+  _accum += dt;
+  while (_accum >= _STEP) {
+    frame++;
+    update();
+    _accum -= _STEP;
+  }
+  render();
+})(0);
 </script>
 </body>
 </html>
