@@ -341,9 +341,9 @@ function startGame() {
 }
 
 // ─── physics ──────────────────────────────────────────────────────────────────
-function demoCar(c) {
+function demoCar(c, fast) {
   if (c.demoTimer > 0) return;
-  c.demoTimer = 180;
+  c.demoTimer = fast ? 90 : 180;
   c.vx = c.vy = c.angV = 0;
   const col = c.team === 'blue' ? '#4488ff' : '#ff7733';
   emitParticles(c.x, c.y, 25, col, 10, 4);
@@ -764,13 +764,14 @@ function carCarCollide() {
 
   // Demo check
   if (SDEFS[3].cur === 2) {
-    // On Contact: demo the slower / less boosting car
-    const hitCar = Math.abs(blue.vx) + Math.abs(blue.vy) < Math.abs(orange.vx) + Math.abs(orange.vy) ? blue : orange;
-    demoCar(hitCar);
+    // On Contact: both cars get demoed, fast respawn
+    demoCar(blue, true);
+    demoCar(orange, true);
   } else if (SDEFS[3].cur === 1 && relSpd > 12) {
-    // Normal: demo on high-speed impact
-    const hitCar = (Math.abs(blue.vx)+Math.abs(blue.vy)) < (Math.abs(orange.vx)+Math.abs(orange.vy)) ? blue : orange;
-    demoCar(hitCar);
+    // Normal: only the slower car gets demoed (higher momentum = survives)
+    const blueSpd = Math.hypot(blue.vx, blue.vy);
+    const orangeSpd = Math.hypot(orange.vx, orange.vy);
+    demoCar(blueSpd < orangeSpd ? blue : orange);
   }
 }
 
